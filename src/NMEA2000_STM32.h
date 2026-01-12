@@ -271,7 +271,6 @@ public:
    */
   bool setFilter(uint8_t bank_num, uint32_t filter_id, uint32_t mask, IDE = AUTO, uint32_t filter_mode = CAN_FILTERMODE_IDMASK, uint32_t filter_scale = CAN_FILTERSCALE_32BIT, uint32_t fifo = CAN_FILTER_DEFAULT_FIFO);
 
-  void enableFIFO(bool status = 1);
   void enableMBInterrupts();
   void disableMBInterrupts();
 

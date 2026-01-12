@@ -942,10 +942,9 @@ bool tNMEA2000_STM32::addToRingBuffer(const CAN_message_t &msg)
 
   rxMsg = rxRing1->getAddRef(prio);
 
-  // Nachricht hineinkopieren
   if (rxMsg != nullptr)
   {
-    *rxMsg = msg; // ← WICHTIG!
+    *rxMsg = msg; 
     return true;
   }
 
@@ -1261,12 +1260,6 @@ void tNMEA2000_STM32::disableMBInterrupts()
 #endif
 }
 
-void tNMEA2000_STM32::enableFIFO(bool status)
-{
-  // Nothing to do here. The FIFO is on by default. This is just to work with code made for Teensy FlexCan.
-  (void)status;
-}
-
 /* Interrupt functions
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
 */
@@ -1310,9 +1303,7 @@ extern "C" void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *CanHandle)
   CAN_message_t rxmsg;
   CAN_message_t *rxMsg;
   CAN_RxHeaderTypeDef RxHeader;
-// bool state = Disable_Interrupts();
-// HAL_CAN_DeactivateNotification(CanHandle, CAN_IT_TX_MAILBOX_EMPTY);
-// move the message from RX FIFO0 to RX ringbuffer
+
 #if defined(STM32_CAN1_TX_RX0_BLOCKED_BY_USB) && defined(STM32_CAN_USB_WORKAROUND_POLLING)
   const uint32_t fifo = CAN_RX_FIFO1;
 #else
@@ -1343,8 +1334,6 @@ extern "C" void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *CanHandle)
     }
 
   } while (HAL_CAN_GetRxFifoFillLevel(CanHandle, fifo));
-  // Enable_Interrupts(state);
-  // HAL_CAN_ActivateNotification(CanHandle, CAN_IT_TX_MAILBOX_EMPTY);
 }
 
 #ifdef CAN1_IRQHandler_AIO
