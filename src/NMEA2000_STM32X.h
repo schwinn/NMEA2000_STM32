@@ -158,20 +158,6 @@ typedef struct
   uint8_t timeseg2;
 } Baudrate_entry_t;
 
-typedef enum CAN_PINS
-{
-  DEF,
-  ALT,
-  ALT_2,
-} CAN_PINS;
-
-typedef enum IDE
-{
-  STD = 0,
-  EXT = 1,
-  AUTO = 2
-} IDE;
-
 typedef struct
 {
   void *__this;
@@ -186,7 +172,6 @@ public:
   tNMEA2000_STM32X(uint32_t rx, uint32_t tx = PNUM_NOT_DEFINED);
   tNMEA2000_STM32X(PinName rx, PinName tx = NC);
   tNMEA2000_STM32X(CAN_TypeDef *canPort);
-  tNMEA2000_STM32X(CAN_TypeDef *_canBus, CAN_PINS pins);
   virtual ~tNMEA2000_STM32X();
 
   virtual void InitCANFrameBuffers() override;
@@ -194,24 +179,10 @@ public:
   virtual bool CANSendFrame(unsigned long id, unsigned char len, const unsigned char *buf, bool wait_sent = true) override;
   virtual bool CANGetFrame(unsigned long &id, unsigned char &len, unsigned char *buf) override;
 
-  enum MODE
-  {
-    NORMAL = CAN_MODE_NORMAL,
-    SILENT = CAN_MODE_SILENT,
-    SILENT_LOOPBACK = CAN_MODE_SILENT_LOOPBACK,
-    LOOPBACK = CAN_MODE_LOOPBACK
-  };
-
   enum FILTER_ACTION
   {
     STORE_FIFO0,
     STORE_FIFO1,
-  };
-
-  enum TX_BUFFER_MODE
-  {
-    FIFO = ENABLE,  /** Sequential transfers order */
-    QUEUE = DISABLE /** Sequence based on msg ID priorities. Only effects hardware queue. */
   };
 
   /**-------------------------------------------------------------
@@ -220,19 +191,6 @@ public:
    * -------------------------------------------------------------
    */
   void setIRQPriority(uint32_t preemptPriority, uint32_t subPriority);
-
-  /** send message again on arbitration failure */
-  void setAutoRetransmission(bool enabled);
-
-  /** If locked incoming msg is dropped when fifo is full,
-   *  when unlocked last msg in fifo is overwritten
-   *  2nd arg has no effect, setting effects both fifos */
-  void setRxFIFOLock(bool fifo0locked, bool fifo1locked = true);
-  void setTxBufferMode(TX_BUFFER_MODE mode);
-  void setTimestampCounter(bool enabled);
-
-  void setMode(MODE mode);
-  void setAutoBusOffRecovery(bool enabled);
 
   /**-------------------------------------------------------------
    *     lifecycle functions
@@ -251,31 +209,16 @@ public:
    */
   bool sendFromTxRing();
 
-  /** returns number of available filter banks. If hasSharedFilterBanks() is false counts may differ by id type. */
-  uint8_t getFilterBankCount(IDE std_ext = STD);
-  /** returns if filter count and index are shared (true) or dedicated per id type (false) */
-  bool hasSharedFilterBanks()
-  {
-    return true;
-  }
-
   /**
    * Manually set STM32 filter bank parameters
    * These return true on success
    */
-  /** set filter state and action, keeps filter rules intact */
-  bool setFilter(uint8_t bank_num, bool enabled, FILTER_ACTION action = CAN_FILTER_DEFAULT_ACTION);
   bool setFilterRaw(uint8_t bank_num, uint32_t id, uint32_t mask, uint32_t filter_mode, uint32_t filter_scale, FILTER_ACTION action = CAN_FILTER_DEFAULT_ACTION, bool enabled = true);
-  /** Legacy, broken! Only works correctly for 32 bit mask mode
-   * Returns true on Error, false on Success (like Teensy functions, opposite of STM32 function)
-   */
-  bool setFilter(uint8_t bank_num, uint32_t filter_id, uint32_t mask, IDE = AUTO, uint32_t filter_mode = CAN_FILTERMODE_IDMASK, uint32_t filter_scale = CAN_FILTERSCALE_32BIT, uint32_t fifo = CAN_FILTER_DEFAULT_FIFO);
-
+ 
   void enableMBInterrupts();
   void disableMBInterrupts();
 
   bool addToRingBuffer(const CAN_message_t &msg);
-
 
 protected:
   tPriorityRingBuffer<CAN_message_t> *rxRing1;
@@ -292,9 +235,7 @@ private:
   void start(void);
   void stop(void);
   void initializeFilters();
-  bool isInitialized() { return rx_buffer != 0; }
   void initializeBuffers(void);
-  void freeBuffers(void);
 
   template <typename T, size_t N>
   bool lookupBaudrate(int Baudrate, const T (&table)[N]);
@@ -305,7 +246,6 @@ private:
   uint32_t fixPinFunction(uint32_t function);
 
   volatile CAN_message_t *rx_buffer = nullptr;
-  // volatile CAN_message_t *tx_buffer = nullptr;
 
   static constexpr Baudrate_entry_t BAUD_RATE_TABLE_48M[]{
       {1000000, 3, 16, 13, 2},
@@ -347,7 +287,7 @@ private:
   uint32_t preemptPriority;
   uint32_t subPriority;
 
- stm32_can_t _can;
+  stm32_can_t _can;
 };
 
 #endif

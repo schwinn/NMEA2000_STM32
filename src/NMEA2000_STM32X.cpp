@@ -11,8 +11,6 @@
 extern CEC_HandleTypeDef *phcec;
 #endif
 
-#define STM32_CAN_SINGLE_CAN_FILTER_COUNT 14
-#define STM32_CAN_DUAL_CAN_FILTER_COUNT 28
 #define STM32_CAN_CAN2_FILTER_OFFSET 14
 
 // Max value, lowest priority
@@ -127,66 +125,6 @@ bool tNMEA2000_STM32X::hasPeripheral()
   return canObj[index] == &_can;
 }
 
-// legacy pin config for compatibility
-tNMEA2000_STM32X::tNMEA2000_STM32X(CAN_TypeDef *canPort, CAN_PINS pins)
-    : rx(NC), tx(NC), rxRing1(0), txRing1(0),
-      preemptPriority(MAX_IRQ_PRIO_VALUE), subPriority(0), IsOpen(false), tNMEA2000()
-{
-  if (canPort == CAN1)
-  {
-    switch (pins)
-    {
-    case DEF:
-      rx = PA_11;
-      tx = PA_12;
-      break;
-    case ALT:
-      rx = PB_8;
-      tx = PB_9;
-      break;
-#if defined(__HAL_RCC_GPIOD_CLK_ENABLE)
-    case ALT_2:
-      rx = PD_0;
-      tx = PD_1;
-      break;
-#endif
-    }
-  }
-#ifdef CAN2
-  else if (canPort == CAN2)
-  {
-    switch (pins)
-    {
-    case DEF:
-      rx = PB_12;
-      tx = PB_13;
-      break;
-    case ALT:
-      rx = PB_5;
-      tx = PB_6;
-      break;
-    }
-  }
-#endif
-#ifdef CAN3
-  else if (canPort == CAN3)
-  {
-    switch (pins)
-    {
-    case DEF:
-      rx = PA_8;
-      tx = PA_15;
-      break;
-    case ALT:
-      rx = PB_3;
-      tx = PB_4;
-      break;
-    }
-  }
-#endif
-  init();
-}
-
 tNMEA2000_STM32X::tNMEA2000_STM32X(uint32_t rx, uint32_t tx)
     : rxRing1(0), txRing1(0),
       preemptPriority(MAX_IRQ_PRIO_VALUE), subPriority(0), IsOpen(false), tNMEA2000()
@@ -227,15 +165,12 @@ bool tNMEA2000_STM32X::CANOpen()
   IsOpen = true;
 
   begin();
-  setBaudRate(250000);
 
 #if defined(STMCANDEBUG)
   Serial.begin(115200);
 #endif
   return IsOpen;
 }
-
-
 
 extern void CanIdToN2k(unsigned long id, unsigned char &prio, unsigned long &pgn, unsigned char &src, unsigned char &dst);
 
@@ -268,7 +203,6 @@ bool tNMEA2000_STM32X::CANSendFrame(unsigned long id, unsigned char len, const u
   Serial.printf("%6lu - CANSendFrame pgn:%6lu, prio:%u, src:%u, dst:%u, data:%02X\n",
                 millis(), pgn, prio, src, dst, buf[0]);
 #endif
-
 
   bool sendFromBuffer = false;
 
@@ -432,16 +366,16 @@ void tNMEA2000_STM32X::init(void)
 {
   _can.__this = (void *)this;
   _can.handle.Instance = nullptr;
-  baudrate = 0UL;
+  baudrate = 250000UL;
   filtersInitialized = false;
 
-  setTimestampCounter(false);
-  setAutoBusOffRecovery(true);
+  _can.handle.Init.TimeTriggeredMode = DISABLE;
+  _can.handle.Init.AutoBusOff = ENABLE;
   _can.handle.Init.AutoWakeUp = DISABLE;
-  setRxFIFOLock(false);
-  setTxBufferMode(TX_BUFFER_MODE::FIFO);
-  setMode(MODE::NORMAL);
-  setAutoRetransmission(true);
+  _can.handle.Init.AutoRetransmission = ENABLE;
+  _can.handle.Init.ReceiveFifoLocked = DISABLE;
+  _can.handle.Init.TransmitFifoPriority = ENABLE;
+  _can.handle.Init.Mode = CAN_MODE_NORMAL;
 }
 
 CAN_TypeDef *tNMEA2000_STM32X::getPeripheral()
@@ -492,37 +426,6 @@ void tNMEA2000_STM32X::setIRQPriority(uint32_t preemptPriority, uint32_t subPrio
   // NOTE: limiting the IRQ prio, but not accounting for group setting
   this->preemptPriority = min(preemptPriority, MAX_IRQ_PRIO_VALUE);
   this->subPriority = min(subPriority, MAX_IRQ_PRIO_VALUE);
-}
-
-void tNMEA2000_STM32X::setAutoRetransmission(bool enabled)
-{
-  _can.handle.Init.AutoRetransmission = enabled ? (ENABLE) : (DISABLE);
-}
-
-void tNMEA2000_STM32X::setRxFIFOLock(bool fifo0locked, bool fifo1locked)
-{
-  (void)fifo1locked;
-  _can.handle.Init.ReceiveFifoLocked = fifo0locked ? (ENABLE) : (DISABLE);
-}
-
-void tNMEA2000_STM32X::setTxBufferMode(TX_BUFFER_MODE mode)
-{
-  _can.handle.Init.TransmitFifoPriority = (FunctionalState)mode;
-}
-
-void tNMEA2000_STM32X::setTimestampCounter(bool enabled)
-{
-  _can.handle.Init.TimeTriggeredMode = enabled ? (ENABLE) : (DISABLE);
-}
-
-void tNMEA2000_STM32X::setMode(MODE mode)
-{
-  _can.handle.Init.Mode = mode;
-}
-
-void tNMEA2000_STM32X::setAutoBusOffRecovery(bool enabled)
-{
-  _can.handle.Init.AutoBusOff = enabled ? (ENABLE) : (DISABLE);
 }
 
 /**-------------------------------------------------------------
@@ -628,8 +531,6 @@ void tNMEA2000_STM32X::begin()
   }
 #endif
 
-  setAutoRetransmission(true);
-
   filtersInitialized = false;
 
   // try to start in case baudrate was set earlier
@@ -674,8 +575,6 @@ void tNMEA2000_STM32X::end()
   if (tx != NC)
     pin_function(tx, STM_PIN_DATA(STM_MODE_INPUT, GPIO_PULLUP, GPIO_AF_NONE));
 
-  // freeBuffers();
-
   freePeripheral();
 
   _canIsActive = false;
@@ -705,8 +604,6 @@ void tNMEA2000_STM32X::start()
 {
   // Initializes CAN
   HAL_CAN_Init(&_can.handle);
-
-  _can.handle.Instance->MCR &= ~CAN_MCR_NART;
 
   initializeFilters();
 
@@ -739,131 +636,6 @@ void tNMEA2000_STM32X::stop()
  *     post begin(), setup filters, data transfer
  * -------------------------------------------------------------
  */
-
-uint8_t tNMEA2000_STM32X::getFilterBankCount(IDE std_ext)
-{
-  (void)std_ext;
-  if (_can.handle.Instance == nullptr)
-    return 0;
-#ifdef CAN2
-  if (_can.handle.Instance == CAN1)
-  {
-    return STM32_CAN_CAN2_FILTER_OFFSET;
-  }
-  if (_can.handle.Instance == CAN2)
-  {
-    return STM32_CAN_DUAL_CAN_FILTER_COUNT - STM32_CAN_CAN2_FILTER_OFFSET;
-  }
-#endif
-  return STM32_CAN_SINGLE_CAN_FILTER_COUNT;
-}
-
-static uint32_t format32bitFilter(uint32_t id, IDE std_ext, bool mask)
-{
-  uint32_t id_reg;
-  if (std_ext == AUTO)
-  {
-    std_ext = (id <= 0x7FF) ? STD : EXT;
-  }
-  if (std_ext == STD)
-  {
-    id <<= 18;
-  }
-  id_reg = id << 3;
-  // set IDE bit
-  if (mask || std_ext == EXT)
-  {
-    id_reg |= (1 << 2);
-  }
-  return id_reg;
-}
-
-static uint32_t format16bitFilter(uint32_t id, IDE std_ext, bool mask)
-{
-  uint32_t id_reg;
-  if (std_ext == AUTO)
-  {
-    std_ext = (id <= 0x7FF) ? STD : EXT;
-  }
-  if (std_ext == STD)
-  {
-    id <<= 18;
-  }
-  // set STID
-  id_reg = (id >> (18 - 5)) & 0xFFE0UL;
-  // set EXTI [17:15]
-  id_reg |= (id >> (18 - 3)) & 0x003UL;
-  // set IDE bit
-  if (mask || std_ext == EXT)
-  {
-    id_reg |= (1 << 3);
-  }
-  return id_reg;
-}
-
-bool tNMEA2000_STM32X::setFilter(uint8_t bank_num, bool enabled, FILTER_ACTION action)
-{
-  CAN_TypeDef *can_ip = _can.handle.Instance;
-  if (!_can.handle.Instance)
-    return false;
-/** CAN2 shares filter banks with CAN1
- * Driver allocates equal amount to each
- * Filter Banks located at CAN1 base address
- */
-#ifdef CAN2
-  if (_can.handle.Instance == CAN2)
-  {
-    can_ip = CAN1;
-    bank_num += STM32_CAN_CAN2_FILTER_OFFSET;
-  }
-#endif
-
-  uint32_t filternbrbitpos = (uint32_t)1 << (bank_num & 0x1FU);
-
-  /* Initialisation mode for the filter */
-  SET_BIT(can_ip->FMR, CAN_FMR_FINIT);
-
-  /* Filter Deactivation */
-  CLEAR_BIT(can_ip->FA1R, filternbrbitpos);
-
-  /* Filter FIFO assignment */
-  switch (action)
-  {
-  case FILTER_ACTION::STORE_FIFO0:
-    CLEAR_BIT(can_ip->FFA1R, filternbrbitpos);
-    break;
-  case FILTER_ACTION::STORE_FIFO1:
-    SET_BIT(can_ip->FFA1R, filternbrbitpos);
-    break;
-  }
-
-  /* Filter activation */
-  if (enabled)
-  {
-    SET_BIT(can_ip->FA1R, filternbrbitpos);
-  }
-  /* Leave the initialisation mode for the filter */
-  CLEAR_BIT(can_ip->FMR, CAN_FMR_FINIT);
-  return true;
-}
-
-bool tNMEA2000_STM32X::setFilter(uint8_t bank_num, uint32_t filter_id, uint32_t mask, IDE std_ext, uint32_t filter_mode, uint32_t filter_scale, uint32_t fifo)
-{
-  /** NOTE: legacy, this function only implemented 32 bit scaling mode in mask mode, other modes will be broken*/
-  if (filter_scale != CAN_FILTERSCALE_32BIT)
-  {
-    core_debug("WARNING: legacy function only implements 32 bit filter scale. Filter will be broken!\n");
-  }
-  if (filter_scale != CAN_FILTERMODE_IDMASK)
-  {
-    core_debug("WARNING: legacy function only implements ID Mask mode. Filter will be broken!\n");
-  }
-  /** re-implement broken implementation for legacy behaviour */
-  uint32_t id_reg = format32bitFilter(filter_id, std_ext, false);
-  uint32_t mask_reg = format32bitFilter(mask, std_ext, true);
-  FILTER_ACTION action = (fifo == CAN_FILTER_FIFO0) ? FILTER_ACTION::STORE_FIFO0 : FILTER_ACTION::STORE_FIFO1;
-  return !setFilterRaw(bank_num, id_reg, mask_reg, filter_mode, filter_scale, action);
-}
 
 bool tNMEA2000_STM32X::setFilterRaw(uint8_t bank_num, uint32_t id, uint32_t mask, uint32_t filter_mode, uint32_t filter_scale, FILTER_ACTION action, bool enabled)
 {
@@ -901,15 +673,9 @@ bool tNMEA2000_STM32X::setFilterRaw(uint8_t bank_num, uint32_t id, uint32_t mask
   if (_can.handle.Instance == CAN2)
   {
     sFilterConfig.FilterBank += STM32_CAN_CAN2_FILTER_OFFSET;
-    if (sFilterConfig.FilterBank >= STM32_CAN_DUAL_CAN_FILTER_COUNT)
-      return false;
   }
-  else
 #endif
-      if (sFilterConfig.FilterBank >= STM32_CAN_SINGLE_CAN_FILTER_COUNT)
-  {
-    return false;
-  }
+
   // Enable filter
   return (HAL_CAN_ConfigFilter(&_can.handle, &sFilterConfig) == HAL_OK);
 }
@@ -923,12 +689,6 @@ void tNMEA2000_STM32X::initializeFilters()
   /** Let everything in by default */
   setFilterRaw(0, 0UL, 0UL, CAN_FILTERMODE_IDMASK, CAN_FILTERSCALE_32BIT,
                FILTER_ACTION::CAN_FILTER_DEFAULT_ACTION, true);
-
-  /** turn off all other filters that might sill be setup from before */
-  for (uint8_t bank_num = 1; bank_num < STM32_CAN_SINGLE_CAN_FILTER_COUNT; bank_num++)
-  {
-    setFilter(bank_num, false);
-  }
 }
 
 bool tNMEA2000_STM32X::addToRingBuffer(const CAN_message_t &msg)
@@ -944,7 +704,7 @@ bool tNMEA2000_STM32X::addToRingBuffer(const CAN_message_t &msg)
 
   if (rxMsg != nullptr)
   {
-    *rxMsg = msg; 
+    *rxMsg = msg;
     return true;
   }
 
@@ -952,7 +712,7 @@ bool tNMEA2000_STM32X::addToRingBuffer(const CAN_message_t &msg)
 }
 
 void tNMEA2000_STM32X::setBaudRateValues(uint16_t prescaler, uint8_t timeseg1,
-                                        uint8_t timeseg2, uint8_t sjw)
+                                         uint8_t timeseg2, uint8_t sjw)
 {
   uint32_t _SyncJumpWidth = 0;
   uint32_t _TimeSeg1 = 0;
